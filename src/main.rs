@@ -42,7 +42,8 @@ async fn run() -> Result<(), String> {
         .map_err(|_| "Cloudflare Access team domain must be specified via `CF_AUTH_DOMAIN` (example: https://your-team-name.cloudflareaccess.com)".to_string())
         .and_then(|s| IssuerUrl::new(s).map_err(|e| format!("Authentication domain was invalid: {}", e)))?;
 
-    // Ensure we can load the certificate trust roots for OpenSSL to access.
+    // Ensure that the root certificate trust store is already present/configured, and if not, try
+    // finding it and configuring the environment to allow OpenSSL to locate it.
     if !openssl_probe::has_ssl_cert_env_vars() && !openssl_probe::try_init_ssl_cert_env_vars() {
         return Err(String::from("Failed to locate system root certificates. TLS cannot verify certificates without this."));
     }
