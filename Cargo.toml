@@ -1,0 +1,21 @@
+[package]
+name = "cloudflare-access-forwardauth"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+
+[features]
+default = []
+static-build = ["hyper-tls/vendored"]
+
+[dependencies]
+arc-swap = { version = "1.5.1", default-features = false }
+axum = { version = "0.5.16", default-features = false, features = ["http1", "headers", "json", "matched-path"] }
+convert_case = { version = "0.6.0", default-features = false }
+hyper = { version = "0.14.14", default-features = false, features = ["http1", "client"] }
+hyper-tls = { version = "0.5.0", default-features = false }
+openidconnect = { version = "2.3.2", default-features = false }
+serde = { version = "1", default-features = false }
+tracing = { version = "0.1.37", default-features = false, features = ["std", "attributes"] }
+tracing-subscriber = { version = "0.3.16", default-features = false, features = ["std", "env-filter", "fmt", "registry", "json"] }
+tokio = { version = "1.21.2", default-features = false, features = ["macros", "net", "rt", "time"] }
