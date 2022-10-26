@@ -21,7 +21,7 @@ impl SignatureState {
     pub fn from_issuer_url(issuer_url: IssuerUrl) -> Result<Self, String> {
         let jwks_url = issuer_url
             .join("cdn-cgi/access/certs")
-            .map_err(|e| format!("Failed to construct JWKS URL from  issuer: {}", e))
+            .map_err(|e| format!("Failed to construct JWKS URL from issuer: {}", e))
             .map(JsonWebKeySetUrl::from_url)?;
 
         Ok(Self {
@@ -64,7 +64,8 @@ pub async fn manage_jwks_refreshing(state: Arc<SignatureState>) {
             Err(e) => {
                 error!(
                     jwks_url = state.jwks_url.as_str(),
-                    "Error during refreshing JWKS data: {}. Retrying in 5 seconds.", e,
+                    error = ?e,
+                    "Error during refreshing JWKS data. Retrying in 5 seconds.",
                 );
                 sleep(Duration::from_secs(5)).await;
                 continue;
