@@ -45,7 +45,6 @@ async fn validate(
     };
 
     // Now construct the validater, and don't bother validating the nonce.
-    //
     // TODO: _Can_ we actually validate it? Does it matter? Not clear.
     let verifier =
         IdTokenVerifier::new_public_client(ClientId::new(audience), state.issuer_url(), jwks);
