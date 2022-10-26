@@ -1,6 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use openidconnect::IssuerUrl;
+use tracing::error;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub mod validation;
@@ -9,7 +10,7 @@ use self::validation::{manage_jwks_refreshing, SignatureState};
 use self::web::run_api_endpoint;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), String> {
+async fn main() {
     // Initialize the tracing/logging layer.
     tracing_subscriber::fmt()
         .json()
@@ -20,6 +21,13 @@ async fn main() -> Result<(), String> {
         )
         .init();
 
+    // Run the application, logging any unrecoverable errors.
+    if let Err(e) = run().await {
+        error!(error = e, "Failed with unrecoverable error. Exiting.");
+    }
+}
+
+async fn run() -> Result<(), String> {
     // Read all the relevant configuration variables.
     let listen_address: SocketAddr = std::env::var("LISTEN_ADDR")
         .map_err(|_| {
@@ -33,6 +41,11 @@ async fn main() -> Result<(), String> {
     let issuer_url = std::env::var("CF_AUTH_DOMAIN")
         .map_err(|_| "Cloudflare Access team domain must be specified via `CF_AUTH_DOMAIN` (example: https://your-team-name.cloudflareaccess.com)".to_string())
         .and_then(|s| IssuerUrl::new(s).map_err(|e| format!("Authentication domain was invalid: {}", e)))?;
+
+    // Ensure we can load the certificate trust roots for OpenSSL to access.
+    if !openssl_probe::has_ssl_cert_env_vars() && !openssl_probe::try_init_ssl_cert_env_vars() {
+        return Err(String::from("Failed to locate system root certificates. TLS cannot verify certificates without this."));
+    }
 
     // Create all the application configuration and shared state.
     let signature_state = SignatureState::from_issuer_url(issuer_url).map(Arc::new)?;
