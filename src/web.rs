@@ -9,9 +9,10 @@ use axum::{
     Extension, Router, TypedHeader,
 };
 use convert_case::{Case, Casing};
-use hyper::{Body, HeaderMap, StatusCode};
+use hyper::{Body, HeaderMap, StatusCode, Request};
 use openidconnect::{ClientId, IdTokenVerifier, Nonce};
-use tracing::{error, info};
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, Span};
 
 use crate::validation::{
     token::{CloudflareAccessIdToken, CloudflareAccessOIDCAccessToken},
@@ -111,7 +112,15 @@ pub async fn run_api_endpoint(
         .route("/health/ready", get(readiness))
         .route("/health/live", get(|| ready(())))
         .route("/validate/:audience", get(validate))
-        .layer(Extension(state));
+        .layer(Extension(state))
+        .layer(TraceLayer::new_for_http()
+            .on_request(|request: &Request<_>, _: &Span| {
+                info!(
+                    path = request.uri().path(),
+                    method = %request.method(),
+                    "Got request."
+                );
+            }));
 
     info!("Listening on {}.", listen_address);
 
