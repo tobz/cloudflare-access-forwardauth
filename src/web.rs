@@ -118,6 +118,7 @@ pub async fn run_api_endpoint(
                 info!(
                     path = request.uri().path(),
                     method = %request.method(),
+                    headers = ?request.headers(),
                     "Got request."
                 );
             }));
