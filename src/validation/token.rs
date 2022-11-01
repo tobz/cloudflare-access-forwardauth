@@ -12,6 +12,7 @@ use openidconnect::{
     AccessToken, AdditionalClaims, IdToken,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub type CloudflareAccessIdToken = IdToken<
     CloudflareAccessCustomClaims,
@@ -28,12 +29,12 @@ pub struct CloudflareAccessCustomClaims {
     ///
     /// These are deroved from the additional "OIDC Claims" specified in the configuration of an
     /// OpenID Connect provider on the Cloudflare Access side.
-    custom: HashMap<String, String>,
+    custom: HashMap<String, Value>,
 }
 
 impl CloudflareAccessCustomClaims {
     /// Gets an iterator for visiting all custom claim mapping pairs, in arbitrary order.
-    pub fn claims(&self) -> Iter<'_, String, String> {
+    pub fn claims(&self) -> Iter<'_, String, Value> {
         self.custom.iter()
     }
 }

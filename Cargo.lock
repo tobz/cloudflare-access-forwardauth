@@ -151,6 +151,7 @@ dependencies = [
  "openidconnect",
  "openssl-probe",
  "serde",
+ "serde_json",
  "tokio",
  "tower-http",
  "tracing",

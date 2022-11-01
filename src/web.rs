@@ -11,6 +11,7 @@ use axum::{
 use convert_case::{Case, Casing};
 use hyper::{Body, HeaderMap, StatusCode, Request};
 use openidconnect::{ClientId, IdTokenVerifier, Nonce};
+use serde_json::Value;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, Span};
 
@@ -62,9 +63,16 @@ async fn validate(
             let headers = claims.additional_claims().claims().try_fold(
                 HeaderMap::new(),
                 |mut acc, (claim_name, claim_value)| {
+                    // Value in the custom claims must be a string for us to be able to generate a
+                    // header for it. This may change in the future.
+                    let claim_value_str = match claim_value {
+                        Value::String(s) => s.as_str(),
+                        _ => return Ok(acc),
+                    };
+
                     let claim_header_name = format!("X-{}", claim_name).to_case(Case::Train);
                     let header_name = HeaderName::from_str(&claim_header_name);
-                    let header_value = HeaderValue::from_str(claim_value);
+                    let header_value = HeaderValue::from_str(claim_value_str);
                     header_name
                         .map_err(|_| format!("Invalid header name '{}'", claim_header_name))
                         .and_then(|hn| {
@@ -118,7 +126,6 @@ pub async fn run_api_endpoint(
                 info!(
                     path = request.uri().path(),
                     method = %request.method(),
-                    headers = ?request.headers(),
                     "Got request."
                 );
             }));

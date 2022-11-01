@@ -17,6 +17,7 @@ hyper-tls = { version = "0.5.0", default-features = false }
 openidconnect = { version = "2.3.2", default-features = false }
 openssl-probe = { version = "0.1.5", default-features = false }
 serde = { version = "1", default-features = false }
+serde_json = { version = "1", default-features = false }
 tracing = { version = "0.1.37", default-features = false, features = ["std", "attributes"] }
 tracing-subscriber = { version = "0.3.16", default-features = false, features = ["std", "env-filter", "fmt", "registry", "json"] }
 tokio = { version = "1.21.2", default-features = false, features = ["macros", "net", "rt", "time"] }
