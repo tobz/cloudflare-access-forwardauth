@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Iter, HashMap};
+use std::collections::HashMap;
 
 use axum::{
     headers,
@@ -29,13 +29,28 @@ pub struct CloudflareAccessCustomClaims {
     ///
     /// These are deroved from the additional "OIDC Claims" specified in the configuration of an
     /// OpenID Connect provider on the Cloudflare Access side.
+    #[serde(default)]
     custom: HashMap<String, Value>,
+
+    /// The Cloudflare Access Service Auth Token ID.
+    ///
+    /// When using Service Auth tokens to authenticate requests, the client ID will be sent as the
+    /// "common name" in the JWT to identify which service token was used.
+    #[serde(rename = "common_name")]
+    service_token_id: Option<String>,
 }
 
 impl CloudflareAccessCustomClaims {
     /// Gets an iterator for visiting all custom claim mapping pairs, in arbitrary order.
-    pub fn claims(&self) -> Iter<'_, String, Value> {
-        self.custom.iter()
+    pub fn claims(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.custom
+            .iter()
+            .filter_map(|(k, v)| v.as_str().map(|v| (k.as_str(), v)))
+    }
+
+    /// Gets the service token ID, if it exists.
+    pub fn get_service_token_id(&self) -> Option<&str> {
+        self.service_token_id.as_deref()
     }
 }
 

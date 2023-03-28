@@ -6,7 +6,9 @@ use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub mod validation;
 pub mod web;
-use self::validation::{manage_jwks_refreshing, SignatureState};
+use self::validation::{
+    manage_jwks_refreshing, service_auth::ServiceAuthTokenHeaderMap, SignatureState,
+};
 use self::web::run_api_endpoint;
 
 #[tokio::main(flavor = "current_thread")]
@@ -42,6 +44,16 @@ async fn run() -> Result<(), String> {
         .map_err(|_| "Cloudflare Access team domain must be specified via `CF_AUTH_DOMAIN` (example: https://your-team-name.cloudflareaccess.com)".to_string())
         .and_then(|s| IssuerUrl::new(s).map_err(|e| format!("Authentication domain was invalid: {}", e)))?;
 
+    let token_map = std::env::var("SERVICE_TOKEN_AUTH_MAPPING_FILE")
+        .ok()
+        .map(|s| {
+            ServiceAuthTokenHeaderMap::from_mapping_file(&s)
+                .map_err(|e| format!("Failed to load service token auth mapping file: {}", e))
+                .map(Arc::new)
+        })
+        .transpose()?
+        .unwrap_or_default();
+
     // Ensure that the root certificate trust store is already present/configured, and if not, try
     // finding it and configuring the environment to allow OpenSSL to locate it.
     if !openssl_probe::has_ssl_cert_env_vars() && !openssl_probe::try_init_ssl_cert_env_vars() {
@@ -56,5 +68,5 @@ async fn run() -> Result<(), String> {
     tokio::spawn(manage_jwks_refreshing(Arc::clone(&signature_state)));
 
     // Run the API endpoint.
-    run_api_endpoint(&listen_address, signature_state).await
+    run_api_endpoint(&listen_address, signature_state, token_map).await
 }

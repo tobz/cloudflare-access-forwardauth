@@ -9,6 +9,7 @@ use openidconnect::{
 use tokio::time::{interval, sleep};
 use tracing::{error, info};
 
+pub mod service_auth;
 pub mod token;
 
 pub struct SignatureState {

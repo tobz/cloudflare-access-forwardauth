@@ -9,13 +9,13 @@ use axum::{
     Extension, Router, TypedHeader,
 };
 use convert_case::{Case, Casing};
-use hyper::{Body, HeaderMap, StatusCode, Request};
+use hyper::{Body, HeaderMap, Request, StatusCode};
 use openidconnect::{ClientId, IdTokenVerifier, Nonce};
-use serde_json::Value;
 use tower_http::trace::TraceLayer;
-use tracing::{error, info, Span};
+use tracing::{debug, error, info, Span};
 
 use crate::validation::{
+    service_auth::ServiceAuthTokenHeaderMap,
     token::{CloudflareAccessIdToken, CloudflareAccessOIDCAccessToken},
     SignatureState,
 };
@@ -36,6 +36,7 @@ async fn validate(
     Path(audience): Path<String>,
     TypedHeader(access_token): TypedHeader<CloudflareAccessOIDCAccessToken>,
     Extension(state): Extension<Arc<SignatureState>>,
+    Extension(token_map): Extension<Arc<ServiceAuthTokenHeaderMap>>,
 ) -> impl IntoResponse {
     // If we have no JWKS data yet, we can't validate anything.
     let jwks = match state.jwks() {
@@ -46,7 +47,7 @@ async fn validate(
         }
     };
 
-    // Now construct the validater, and don't bother validating the nonce.
+    // Now construct the validator, and don't bother validating the nonce.
     // TODO: _Can_ we actually validate it? Does it matter? Not clear.
     let verifier =
         IdTokenVerifier::new_public_client(ClientId::new(audience), state.issuer_url(), jwks);
@@ -56,51 +57,53 @@ async fn validate(
     let id_token = CloudflareAccessIdToken::from_str(access_token.0.secret()).expect("weeee");
     match id_token.claims(&verifier, &nonce_verifier) {
         Ok(claims) => {
+            let cf_claims = claims.additional_claims();
+
+            let mut headers = HeaderMap::new();
+
             // For each additional claim, we just turn it into an `X-Foo-Bar`-style header. This
             // means that even for "basic" claims like email or username or group, they must be
             // specified in the "OIDC Claims" section of the OIDC authentiation settings so they get
             // added to the right spot in the claims.
-            let headers = claims.additional_claims().claims().try_fold(
-                HeaderMap::new(),
-                |mut acc, (claim_name, claim_value)| {
-                    // Value in the custom claims must be a string for us to be able to generate a
-                    // header for it. This may change in the future.
-                    let claim_value_str = match claim_value {
-                        Value::String(s) => s.as_str(),
-                        _ => return Ok(acc),
-                    };
+            for (claim_name, claim_value) in cf_claims.claims() {
+                let claim_header_name = format!("X-{}", claim_name).to_case(Case::Train);
+                let header_name = match HeaderName::from_str(&claim_header_name) {
+                    Ok(header_name) => header_name,
+                    Err(_) => {
+                        debug!(
+                            "Received invalid header name '{}' as part of custom claims.",
+                            claim_name
+                        );
+                        continue;
+                    }
+                };
 
-                    let claim_header_name = format!("X-{}", claim_name).to_case(Case::Train);
-                    let header_name = HeaderName::from_str(&claim_header_name);
-                    let header_value = HeaderValue::from_str(claim_value_str);
-                    header_name
-                        .map_err(|_| format!("Invalid header name '{}'", claim_header_name))
-                        .and_then(|hn| {
-                            header_value
-                                .map_err(|_| {
-                                    format!(
-                                        "Invalid header value for header '{}'",
-                                        claim_header_name
-                                    )
-                                })
-                                .map(move |hv| {
-                                    acc.append(hn, hv);
-                                    acc
-                                })
-                        })
-                },
-            );
+                let header_value = match HeaderValue::from_str(claim_value) {
+                    Ok(header_value) => header_value,
+                    Err(_) => {
+                        debug!(
+                            "Received invalid header value '{}' as part of custom claims.",
+                            claim_value
+                        );
+                        continue;
+                    }
+                };
 
-            match headers {
-                Ok(headers) => (StatusCode::OK, Some(headers), ()),
-                Err(e) => {
-                    error!(
-                        error = %e,
-                        "Failed to add response headers to valid authorization response.",
-                    );
-                    (StatusCode::UNAUTHORIZED, None, ())
+                headers.insert(header_name, header_value);
+            }
+
+            // If we have a service auth token, add any mapped headers to the header map.
+            if let Some(service_auth_token_id) = cf_claims.get_service_token_id() {
+                if let Some(mapped_headers) =
+                    token_map.get_header_map_for_token(service_auth_token_id)
+                {
+                    for (header_name, header_value) in mapped_headers.iter() {
+                        headers.insert(header_name.clone(), header_value.clone());
+                    }
                 }
             }
+
+            (StatusCode::OK, Some(headers), ())
         }
         Err(e) => {
             error!(
@@ -115,20 +118,23 @@ async fn validate(
 pub async fn run_api_endpoint(
     listen_address: &SocketAddr,
     state: Arc<SignatureState>,
+    token_map: Arc<ServiceAuthTokenHeaderMap>,
 ) -> Result<(), String> {
     let app = Router::new()
         .route("/health/ready", get(readiness))
         .route("/health/live", get(|| ready(())))
         .route("/validate/:audience", get(validate))
         .layer(Extension(state))
-        .layer(TraceLayer::new_for_http()
-            .on_request(|request: &Request<_>, _: &Span| {
+        .layer(Extension(token_map))
+        .layer(
+            TraceLayer::new_for_http().on_request(|request: &Request<_>, _: &Span| {
                 info!(
                     path = request.uri().path(),
                     method = %request.method(),
                     "Got request."
                 );
-            }));
+            }),
+        );
 
     info!("Listening on {}.", listen_address);
 
