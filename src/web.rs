@@ -32,6 +32,15 @@ async fn readiness(Extension(state): Extension<Arc<SignatureState>>) -> Response
         .unwrap()
 }
 
+async fn validate_with_rest(
+    Path((audience, _rest)): Path<(String, String)>,
+    access_token: TypedHeader<CloudflareAccessOIDCAccessToken>,
+    state: Extension<Arc<SignatureState>>,
+    token_map: Extension<Arc<ServiceAuthTokenHeaderMap>>,
+) -> impl IntoResponse {
+    validate(Path(audience), access_token, state, token_map).await
+}
+
 async fn validate(
     Path(audience): Path<String>,
     TypedHeader(access_token): TypedHeader<CloudflareAccessOIDCAccessToken>,
@@ -124,6 +133,7 @@ pub async fn run_api_endpoint(
         .route("/health/ready", get(readiness))
         .route("/health/live", get(|| ready(())))
         .route("/validate/:audience", get(validate))
+        .route("/validate/:audience/*rest", get(validate_with_rest))
         .layer(Extension(state))
         .layer(Extension(token_map))
         .layer(
