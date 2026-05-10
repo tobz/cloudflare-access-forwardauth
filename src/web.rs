@@ -132,6 +132,7 @@ pub async fn run_api_endpoint(
         .route("/health/ready", get(readiness))
         .route("/health/live", get(|| ready(())))
         .route("/validate/{audience}", get(validate))
+        .route("/validate/{audience}/", get(validate))
         .route("/validate/{audience}/{*rest}", get(validate_with_rest))
         .layer(Extension(state))
         .layer(Extension(token_map))

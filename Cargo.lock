@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "cloudflare-access-forwardauth"
-version = "0.2.0"
+version = "2.0.1"
 dependencies = [
  "arc-swap",
  "axum",
