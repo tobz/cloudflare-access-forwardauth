@@ -1,7 +1,6 @@
 use std::{collections::HashMap, path::Path, str::FromStr};
 
-use axum::{headers::HeaderName, http::HeaderValue};
-use hyper::HeaderMap;
+use http::{HeaderMap, HeaderName, HeaderValue};
 
 #[derive(Debug, Default)]
 pub struct ServiceAuthTokenHeaderMap {
@@ -10,10 +9,11 @@ pub struct ServiceAuthTokenHeaderMap {
 
 impl ServiceAuthTokenHeaderMap {
     pub fn from_mapping_file<P: AsRef<Path>>(path: P) -> Result<Self, String> {
-        // Open the path as a file and deserialize it with serde_yaml.
+        // Open the path as a file and deserialize it with serde_yaml_ng.
         let file = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
-        let raw_token_map: HashMap<String, HashMap<String, String>> = serde_yaml::from_reader(file)
-            .map_err(|e| format!("Failed to deserialize YAML: {}", e))?;
+        let raw_token_map: HashMap<String, HashMap<String, String>> =
+            serde_yaml_ng::from_reader(file)
+                .map_err(|e| format!("Failed to deserialize YAML: {}", e))?;
 
         // Convert the deserialized map into a map of HeaderMaps.
         let mut token_map = HashMap::new();

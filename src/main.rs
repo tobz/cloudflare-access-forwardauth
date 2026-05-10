@@ -2,12 +2,12 @@ use std::{net::SocketAddr, sync::Arc};
 
 use openidconnect::IssuerUrl;
 use tracing::error;
-use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+use tracing_subscriber::{EnvFilter, filter::LevelFilter};
 
 pub mod validation;
 pub mod web;
 use self::validation::{
-    manage_jwks_refreshing, service_auth::ServiceAuthTokenHeaderMap, SignatureState,
+    SignatureState, manage_jwks_refreshing, service_auth::ServiceAuthTokenHeaderMap,
 };
 use self::web::run_api_endpoint;
 
@@ -53,12 +53,6 @@ async fn run() -> Result<(), String> {
         })
         .transpose()?
         .unwrap_or_default();
-
-    // Ensure that the root certificate trust store is already present/configured, and if not, try
-    // finding it and configuring the environment to allow OpenSSL to locate it.
-    if !openssl_probe::has_ssl_cert_env_vars() && !openssl_probe::try_init_ssl_cert_env_vars() {
-        return Err(String::from("Failed to locate system root certificates. TLS cannot verify certificates without this."));
-    }
 
     // Create all the application configuration and shared state.
     let signature_state = SignatureState::from_issuer_url(issuer_url).map(Arc::new)?;

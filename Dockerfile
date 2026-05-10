@@ -1,25 +1,26 @@
-# Configure our Rust build environment, targetting MUSL for an entirely statically-linked binary.
-FROM rust:1.64.0-alpine3.16 AS builder
-RUN rustup target add x86_64-unknown-linux-musl
-RUN apk add -U --no-cache make autoconf g++ openssl-dev ca-certificates
-RUN cargo new cloudflare-access-forwardauth
+# Build a fully static binary against musl libc using the alpine-based Rust image.
+# The default target on rust:*-alpine is x86_64-unknown-linux-musl, so no cross-compilation
+# is needed; the resulting binary is statically linked against musl out of the box.
+FROM rust:1.95.0-alpine3.23 AS builder
+RUN apk add --no-cache musl-dev
 WORKDIR /usr/src/cloudflare-access-forwardauth
 
-# Copy over our Cargo.toml/Cargo.lock file so we can pre-fetch our dependencies. Doing this
-# individually also should let us take advantage of layer caching, since fetching the crates.io
-# registry index the first time is very slow. We have to add a dummy main.rs to allow Cargo to
-# actually do its thing.
+# Pre-fetch and pre-build dependencies so Docker can cache this layer separately from the
+# source code. We seed the project with a stub main.rs, build only the deps, and then drop
+# the stub before copying the real source in below.
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && touch src/main.rs && cargo fetch
+RUN mkdir src \
+    && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release --locked \
+    && rm -rf src target/release/cloudflare-access-forwardauth* target/release/deps/cloudflare_access_forwardauth*
 
-# Now copy over our actual source and build the binary in statically-linked mode.
+# Build the actual binary.
 COPY src ./src
-RUN cargo install --target x86_64-unknown-linux-musl --features static-build --path .
+RUN cargo install --locked --path .
 
-# Copy over the built binary, and TLS root certificates, to our final image.
+# The binary is fully static (musl + rustls/webpki-roots), so we don't need a libc, root
+# CA bundle, or anything else in the runtime image.
 FROM scratch
-WORKDIR /
-COPY --from=builder /usr/local/cargo/bin/cloudflare-access-forwardauth .
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/local/cargo/bin/cloudflare-access-forwardauth /
 USER 1000
-CMD ["./cloudflare-access-forwardauth"]
+ENTRYPOINT ["/cloudflare-access-forwardauth"]

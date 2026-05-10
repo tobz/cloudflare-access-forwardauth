@@ -1,23 +1,23 @@
 use std::{future::ready, net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::{
+    Extension, Router,
+    body::Body,
     extract::Path,
-    headers::HeaderName,
-    http::HeaderValue,
     response::{IntoResponse, Response},
     routing::get,
-    Extension, Router, TypedHeader,
 };
+use axum_extra::TypedHeader;
 use convert_case::{Case, Casing};
-use hyper::{Body, HeaderMap, Request, StatusCode};
+use http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode};
 use openidconnect::{ClientId, IdTokenVerifier, Nonce};
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error, info, Span};
+use tracing::{Span, debug, error, info};
 
 use crate::validation::{
+    SignatureState,
     service_auth::ServiceAuthTokenHeaderMap,
     token::{CloudflareAccessIdToken, CloudflareAccessOIDCAccessToken},
-    SignatureState,
 };
 
 async fn readiness(Extension(state): Extension<Arc<SignatureState>>) -> Response<Body> {
@@ -102,13 +102,12 @@ async fn validate(
             }
 
             // If we have a service auth token, add any mapped headers to the header map.
-            if let Some(service_auth_token_id) = cf_claims.get_service_token_id() {
-                if let Some(mapped_headers) =
+            if let Some(service_auth_token_id) = cf_claims.get_service_token_id()
+                && let Some(mapped_headers) =
                     token_map.get_header_map_for_token(service_auth_token_id)
-                {
-                    for (header_name, header_value) in mapped_headers.iter() {
-                        headers.insert(header_name.clone(), header_value.clone());
-                    }
+            {
+                for (header_name, header_value) in mapped_headers.iter() {
+                    headers.insert(header_name.clone(), header_value.clone());
                 }
             }
 
@@ -132,8 +131,8 @@ pub async fn run_api_endpoint(
     let app = Router::new()
         .route("/health/ready", get(readiness))
         .route("/health/live", get(|| ready(())))
-        .route("/validate/:audience", get(validate))
-        .route("/validate/:audience/*rest", get(validate_with_rest))
+        .route("/validate/{audience}", get(validate))
+        .route("/validate/{audience}/{*rest}", get(validate_with_rest))
         .layer(Extension(state))
         .layer(Extension(token_map))
         .layer(
@@ -148,8 +147,11 @@ pub async fn run_api_endpoint(
 
     info!("Listening on {}.", listen_address);
 
-    axum::Server::bind(listen_address)
-        .serve(app.into_make_service())
+    let listener = tokio::net::TcpListener::bind(listen_address)
+        .await
+        .map_err(|e| format!("Failed to bind to listen address: {}", e))?;
+
+    axum::serve(listener, app)
         .await
         .map_err(|e| format!("Failed to serve HTTP: {}", e))
 }

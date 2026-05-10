@@ -1,10 +1,8 @@
 use std::{sync::Arc, time::Duration};
 
 use arc_swap::ArcSwapOption;
-use hyper::{body::to_bytes, Body, Client, Request};
-use hyper_tls::HttpsConnector;
 use openidconnect::{
-    core::CoreJsonWebKeySet, HttpRequest, HttpResponse, IssuerUrl, JsonWebKeySetUrl,
+    IssuerUrl, JsonWebKeySetUrl, core::CoreJsonWebKeySet, reqwest as oidc_reqwest,
 };
 use tokio::time::{interval, sleep};
 use tracing::{error, info};
@@ -53,14 +51,26 @@ pub async fn manage_jwks_refreshing(state: Arc<SignatureState>) {
     // domain. We specifically handle the initial refresh when the application first starts, as well
     // as periodic refreshes to pull in updates as web keys are rolled, and so on.
 
+    // Build the HTTP client. Redirects are disabled to mitigate SSRF, per the openidconnect crate's
+    // recommendation.
+    let http_client = match oidc_reqwest::ClientBuilder::new()
+        .redirect(oidc_reqwest::redirect::Policy::none())
+        .build()
+    {
+        Ok(client) => client,
+        Err(e) => {
+            error!(error = %e, "Failed to build HTTP client for JWKS refresh.");
+            return;
+        }
+    };
+
     // Create our interval so that we try and refresh the web keys every hour. `Interval` will
     // always tick immediately after being created, so we drain the first tick manually.
     let mut refresh_interval = interval(Duration::from_secs(3600));
     refresh_interval.tick().await;
 
     loop {
-        let new_jwks_result =
-            CoreJsonWebKeySet::fetch_async(&state.jwks_url, drive_http_request).await;
+        let new_jwks_result = CoreJsonWebKeySet::fetch_async(&state.jwks_url, &http_client).await;
         match new_jwks_result {
             Err(e) => {
                 error!(
@@ -87,30 +97,4 @@ pub async fn manage_jwks_refreshing(state: Arc<SignatureState>) {
         // Wait until it's time to refresh the keys.
         refresh_interval.tick().await;
     }
-}
-
-pub async fn drive_http_request(mut request: HttpRequest) -> Result<HttpResponse, hyper::Error> {
-    let client = {
-        let https = HttpsConnector::new();
-        Client::builder().build(https)
-    };
-
-    let mut request_builder = Request::builder()
-        .method(request.method)
-        .uri(request.url.as_str());
-    request_builder.headers_mut().replace(&mut request.headers);
-    let request = request_builder
-        .body(Body::from(request.body))
-        .expect("should not fail to build request");
-
-    let response = client.request(request).await?;
-
-    let status_code = response.status();
-    let headers = response.headers().to_owned();
-    let chunks = to_bytes(response.into_body()).await?;
-    Ok(HttpResponse {
-        status_code,
-        headers,
-        body: chunks.to_vec(),
-    })
 }

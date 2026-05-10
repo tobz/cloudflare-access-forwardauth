@@ -1,15 +1,10 @@
 use std::collections::HashMap;
 
-use axum::{
-    headers,
-    http::{header::HeaderName, HeaderValue},
-};
+use axum_extra::headers;
+use http::{HeaderValue, header::HeaderName};
 use openidconnect::{
-    core::{
-        CoreGenderClaim, CoreJsonWebKeyType, CoreJweContentEncryptionAlgorithm,
-        CoreJwsSigningAlgorithm,
-    },
     AccessToken, AdditionalClaims, IdToken,
+    core::{CoreGenderClaim, CoreJweContentEncryptionAlgorithm, CoreJwsSigningAlgorithm},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,7 +14,6 @@ pub type CloudflareAccessIdToken = IdToken<
     CoreGenderClaim,
     CoreJweContentEncryptionAlgorithm,
     CoreJwsSigningAlgorithm,
-    CoreJsonWebKeyType,
 >;
 
 /// The "custom" claims from a Cloudflare Access JWT token.
